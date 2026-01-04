@@ -7,3 +7,4 @@ requests
 matplotlib
 Pillow
 streamlit-lightweight-charts-v5
+pandas_ta
