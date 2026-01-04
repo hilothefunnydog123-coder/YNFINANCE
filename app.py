@@ -8,7 +8,7 @@ from datetime import datetime
 # This looks for your key in the Streamlit "Secrets" settings
 if "GEMINI_API_KEY" in st.secrets:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-    model = genai.GenerativeModel('gemini-1.5-flash-latest')
+    model = genai.GenerativeModel('gemini-2.0-flash')
 else:
     st.error("Missing Gemini API Key! Add it to Streamlit Secrets.")
 
@@ -95,4 +95,5 @@ if datetime.now().weekday() == 6:
     # You can add a button here to use Gemini to summarize the whole week
 else:
     st.write("The next edition arrives this Sunday night at 8:00 PM EST!")
+
 
