@@ -1,6 +1,6 @@
 [theme]
-primaryColor = "#4CAF50" # A nice leaf green for buttons
-backgroundColor = "#F0F2F6" # A soft, light gray/blue background
-secondaryBackgroundColor = "#FFFFFF" # White cards for content
-textColor = "#31333F" # Soft dark text (easier on eyes)
+primaryColor = "#4CAF50" # Sage Green
+backgroundColor = "#F8F9FB" # Soft Snow White
+secondaryBackgroundColor = "#FFFFFF" # Pure White Cards
+textColor = "#262730" # Charcoal Gray
 font = "sans serif"
