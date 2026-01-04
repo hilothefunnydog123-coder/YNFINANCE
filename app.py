@@ -105,7 +105,7 @@ with tab3:
         if st.button("Analyze Patterns"):
             with st.spinner("Llama 3 Vision is scanning candles..."):
                 vision_resp = client.chat.completions.create(
-                    model="llama-3.2-11b-vision-preview",
+                    model="llama-3.2-11b-vision-instruct",
                     messages=[{
                         "role": "user",
                         "content": [
@@ -118,3 +118,4 @@ with tab3:
 
 st.divider()
 st.caption("YNFINANCE | Built for the future of trading.")
+
