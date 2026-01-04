@@ -5,7 +5,6 @@ import pandas_ta as ta
 from groq import Groq
 from lightweight_charts_v5 import lightweight_charts_v5_component
 import requests
-from datetime import timedelta
 
 # --- 1. SETUP ---
 st.set_page_config(page_title="YNFINANCE Elite", layout="wide", page_icon="🌱")
@@ -13,7 +12,7 @@ st.set_page_config(page_title="YNFINANCE Elite", layout="wide", page_icon="🌱"
 if "GROQ_API_KEY" in st.secrets:
     client = Groq(api_key=st.secrets["GROQ_API_KEY"])
 else:
-    st.error("Missing GROQ_API_KEY in Secrets!")
+    st.error("Missing GROQ_API_KEY in Streamlit Secrets!")
 
 # --- 2. DATA ENGINE ---
 @st.cache_data(ttl=900)
@@ -36,14 +35,14 @@ def get_elite_chart(symbol):
     if df.empty: return None
     df['EMA9'] = ta.ema(df['Close'], length=9)
     df['EMA21'] = ta.ema(df['Close'], length=21)
-    # Signal: 1 for Buy, 0 for None
     df['Signal'] = 0
+    # Set signal to 1 where EMA9 crosses EMA21
     df.loc[(df['EMA9'] > df['EMA21']) & (df['EMA9'].shift(1) <= df['EMA21'].shift(1)), 'Signal'] = 1
     return df
 
-# --- 3. UI ---
+# --- 3. UI DASHBOARD ---
 st.title("🌱 YNFINANCE")
-tab1, tab2, tab3 = st.tabs(["📊 Pulse", "📈 Elite Chart", "🧠 AI Advisor"])
+tab1, tab2, tab3 = st.tabs(["📊 Market Pulse", "📈 Elite Chart", "🧠 AI Advisor"])
 
 with tab1:
     st.dataframe(get_pulse(), use_container_width=True, hide_index=True)
@@ -53,19 +52,37 @@ with tab2:
     df = get_elite_chart(ticker)
     
     if df is not None:
+        # 1. Format Candles
         candles = [{"time": str(d.date()), "open": float(r['Open']), "high": float(r['High']), 
                     "low": float(r['Low']), "close": float(r['Close'])} for d, r in df.iterrows()]
         
-        # FIXED LOOP: Uses .loc or .at to ensure we get a single value, not a Series
+        # 2. Extract Markers & RR Boxes
         markers = []
+        rects = []
+        
+        # FIXED LOOP: Uses range and iloc to avoid ValueError
         for i in range(len(df)):
             if df['Signal'].iloc[i] == 1:
+                entry_date = str(df.index[i].date())
+                entry_price = float(df['Close'].iloc[i])
+                
+                # Add Entry Arrow
                 markers.append({
-                    "time": str(df.index[i].date()), 
-                    "position": "belowBar", "color": "#2196F3", 
-                    "shape": "arrowUp", "text": "BUY"
+                    "time": entry_date, "position": "belowBar", 
+                    "color": "#2196F3", "shape": "arrowUp", "text": "BUY"
+                })
+                
+                # Add RR Box (Green zone for Profit, Red zone for Stop)
+                # target: +5%, stop: -2.5%
+                rects.append({
+                    "from": entry_date, 
+                    "to": str((df.index[i] + pd.Timedelta(days=7)).date()),
+                    "price_start": entry_price * 0.975,
+                    "price_end": entry_price * 1.05,
+                    "color": "rgba(76, 175, 80, 0.15)"
                 })
 
+        # 3. Render Chart
         lightweight_charts_v5_component(
             charts=[{
                 "chart": {"layout": {"background": {"color": "#FFFFFF"}}},
@@ -78,9 +95,15 @@ with tab2:
         )
 
 with tab3:
-    if st.button("Run AI Scan"):
-        chat = client.chat.completions.create(
+    if st.button("Run AI Deep Scan"):
+        st.write("### AI Trade Analysis")
+        # Send last 5 days of data to AI
+        context = df.tail(5).to_string()
+        completion = client.chat.completions.create(
             model="llama-3.3-70b-versatile",
-            messages=[{"role": "user", "content": f"Analyze {ticker} based on recent EMA 9/21 cross."}]
+            messages=[{"role": "user", "content": f"Analyze these stock metrics for {ticker}: {context}"}]
         )
-        st.info(chat.choices[0].message.content)
+        st.info(completion.choices[0].message.content)
+
+st.divider()
+st.caption("YNFINANCE | Professional Intelligence")
