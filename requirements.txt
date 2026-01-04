@@ -6,3 +6,4 @@ lxml
 requests
 matplotlib
 Pillow
+streamlit-lightweight-charts-v5
