@@ -110,3 +110,4 @@ if datetime.now().weekday() == 6:
     st.markdown("📰 **Sunday Edition:** The Weekly Gazette is now live in the Scanner tab!")
 else:
     st.caption("YNFINANCE Global Markets Data | Updates every 15 minutes")
+
