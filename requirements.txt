@@ -4,3 +4,4 @@ pandas
 groq
 lxml
 requests
+matplotlib
