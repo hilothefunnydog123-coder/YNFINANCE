@@ -5,3 +5,4 @@ groq
 lxml
 requests
 matplotlib
+Pillow
