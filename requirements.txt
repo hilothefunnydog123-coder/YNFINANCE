@@ -7,3 +7,5 @@ google-generativeai
 requests
 Pillow
 streamlit-lightweight-charts-v5
+lxml
+beautifulsoup4
