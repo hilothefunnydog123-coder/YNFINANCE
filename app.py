@@ -8,7 +8,7 @@ from groq import Groq
 from PIL import Image
 import requests
 
-# --- 1. GOOGLE SEARCH CONSOLE TAG (HIDDEN) ---
+# --- 1. GOOGLE SEARCH CONSOLE TAG (UPDATED) ---
 components.html(
     f"""<script>
         var meta = document.createElement('meta');
@@ -37,7 +37,7 @@ def get_full_sp500_ranked():
     response = requests.get(url, headers=headers)
     tickers = pd.read_html(response.text)[0]['Symbol'].str.replace('.', '-').tolist()
     
-    # Download data for the whole list (this takes a few seconds)
+    # Download data for the whole list
     data = yf.download(tickers, period="2d", group_by='ticker', progress=False)
     
     ranked_list = []
@@ -48,11 +48,12 @@ def get_full_sp500_ranked():
             prev_price = df['Close'].iloc[-2]
             pct_change = ((current_price - prev_price) / prev_price) * 100
             
-            # Simple Signal Logic (EMA Cross)
-            if pct_change > 2: sig = "STRONG BUY"
-            elif pct_change > 0: sig = "BUY"
-            elif pct_change < -2: sig = "STRONG SELL"
-            else: sig = "SELL"
+            # Simple Signal Logic based on daily strength
+            if pct_change > 2.5: sig = "STRONG BUY"
+            elif pct_change > 0.5: sig = "BUY"
+            elif pct_change < -2.5: sig = "STRONG SELL"
+            elif pct_change < -0.5: sig = "SELL"
+            else: sig = "NEUTRAL"
             
             ranked_list.append({
                 "Ticker": t, 
@@ -62,12 +63,11 @@ def get_full_sp500_ranked():
             })
         except: continue
         
-    # RANK BEST TO WORST
     return pd.DataFrame(ranked_list).sort_values(by="Change %", ascending=False)
 
 def signal_color(s):
     color = '#00c805' if 'BUY' in s else '#ff3b30' if 'SELL' in s else '#8e8e93'
-    return f'background-color: {color}; color: white; font-weight: bold;'
+    return f'background-color: {color}; color: white; font-weight: bold; border-radius: 5px;'
 
 # --- 4. UI ---
 st.title("🌱 YNFINANCE")
@@ -79,7 +79,7 @@ with tab1:
     with st.spinner("Analyzing 500 stocks..."):
         df_ranked = get_full_sp500_ranked()
         st.dataframe(
-            df_ranked.style.applymap(signal_color, subset=['Signal'])
+            df_ranked.style.map(signal_color, subset=['Signal'])
             .background_gradient(subset=['Change %'], cmap='RdYlGn'),
             use_container_width=True, height=800, hide_index=True
         )
