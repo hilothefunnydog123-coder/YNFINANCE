@@ -90,3 +90,4 @@ with tab3:
 
 st.divider()
 st.caption("YNFINANCE Global Markets Data | Updates every 15 minutes")
+
