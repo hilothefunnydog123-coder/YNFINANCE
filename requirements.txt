@@ -1,9 +1,9 @@
 streamlit
 yfinance
 pandas
+pandas_ta
 groq
-lxml
-requests
-matplotlib
-Pillow
 google-generativeai
+requests
+Pillow
+streamlit-lightweight-charts-v5
