@@ -9,3 +9,4 @@ Pillow
 streamlit-lightweight-charts-v5
 lxml
 beautifulsoup4
+matplotlib
