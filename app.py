@@ -5,84 +5,94 @@ import pandas as pd
 import pandas_ta as ta
 import google.generativeai as genai
 from groq import Groq
-from lightweight_charts_v5 import lightweight_charts_v5_component
 from PIL import Image
 import requests
 
 # --- 1. GOOGLE SEARCH CONSOLE VERIFICATION ---
 components.html(
-    """
-    <script>
+    f"""<script>
         var meta = document.createElement('meta');
         meta.name = "google-site-verification";
         meta.content = "HTd_e07Z3vt7rxoCVHyfti8A1mm9sWs_eRSETKtN-BY";
         parent.document.getElementsByTagName('head')[0].appendChild(meta);
-    </script>
-    """,
-    height=0,
+    </script>""", height=0,
 )
 
-# --- 2. PAGE CONFIG & SECRETS ---
+# --- 2. CONFIG & SECRETS ---
 st.set_page_config(page_title="YNFINANCE", page_icon="🌱", layout="wide")
 
-if "GROQ_API_KEY" in st.secrets:
-    groq_client = Groq(api_key=st.secrets["GROQ_API_KEY"])
+groq_client = Groq(api_key=st.secrets["GROQ_API_KEY"]) if "GROQ_API_KEY" in st.secrets else None
 if "GEMINI_API_KEY" in st.secrets:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
     vision_model = genai.GenerativeModel('gemini-2.0-flash')
 
-# --- 3. DATA FUNCTIONS ---
-def get_chart_data(symbol):
-    df = yf.download(symbol, period="1y", interval="1d")
-    if df.empty: return None
-    df['EMA9'] = ta.ema(df['Close'], length=9)
-    df['EMA21'] = ta.ema(df['Close'], length=21)
-    return df
-
-# --- 4. MAIN INTERFACE ---
-st.title("🌱 YNFINANCE")
-
-tab1, tab2, tab3 = st.tabs(["📈 Chart & AI Advisor", "📸 Vision Scanner", "📊 Market Pulse"])
-
-# TAB 1: CHART & CHATBOT
-with tab1:
-    ticker = st.text_input("Ticker Symbol:", value="NVDA").upper()
-    df = get_chart_data(ticker)
+# --- 3. LOGIC ENGINES ---
+@st.cache_data(ttl=900)
+def get_sp500_data():
+    # Scrapes S&P 500 Tickers
+    url = 'https://en.wikipedia.org/wiki/List_of_S%26P_500_companies'
+    tickers = pd.read_html(url)[0]['Symbol'].str.replace('.', '-').tolist()
+    # Batch download (First 50 for speed)
+    data = yf.download(tickers[:50], period="2mo", group_by='ticker', progress=False)
     
-    if df is not None:
-        # Prepare Data
-        candles = [{"time": str(d.date()), "open": float(r['Open']), "high": float(r['High']), 
-                    "low": float(r['Low']), "close": float(r['Close'])} for d, r in df.iterrows()]
-        
-        # FIXED: Added the 'name' parameter to prevent TypeError
-        lightweight_charts_v5_component(
-            name="YN_Main_Chart",
-            charts=[{
-                "chart": {"layout": {"background": {"color": "#FFFFFF"}}},
-                "series": [{"type": "Candlestick", "data": candles}]
-            }], 
-            height=450
-        )
-        
-        if st.button("Ask AI Advisor"):
-            context = df.tail(10).to_string()
-            chat = groq_client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
-                messages=[{"role": "user", "content": f"Analyze {ticker} and give me a trade plan based on: {context}"}]
-            )
-            st.info(chat.choices[0].message.content)
+    results = []
+    for t in tickers[:50]:
+        try:
+            df = data[t]
+            close = df['Close'].iloc[-1]
+            prev_close = df['Close'].iloc[-2]
+            change = ((close - prev_close) / prev_close) * 100
+            
+            # Technical Logic for Buy/Sell/Neutral
+            ema9 = ta.ema(df['Close'], length=9).iloc[-1]
+            ema21 = ta.ema(df['Close'], length=21).iloc[-1]
+            
+            if ema9 > ema21 * 1.01: signal = "STRONG BUY"
+            elif ema9 > ema21: signal = "BUY"
+            elif ema9 < ema21 * 0.99: signal = "STRONG SELL"
+            elif ema9 < ema21: signal = "SELL"
+            else: signal = "NEUTRAL"
+            
+            results.append({"Ticker": t, "Price": round(close, 2), "Change %": round(change, 2), "Signal": signal})
+        except: continue
+    return pd.DataFrame(results)
 
-# TAB 2: SCREENSHOT ANALYZER
-with tab2:
-    st.subheader("Analyze Chart Screenshot")
-    img_file = st.file_uploader("Upload Image", type=['png', 'jpg', 'jpeg'])
-    if img_file:
-        img = Image.open(img_file)
-        st.image(img, use_container_width=True)
-        if st.button("Vision Scan"):
-            response = vision_model.generate_content(["Analyze this chart for trade setups.", img])
-            st.success(response.text)
+def color_signals(val):
+    color = '#2ecc71' if 'BUY' in val else '#e74c3c' if 'SELL' in val else '#95a5a6'
+    return f'background-color: {color}; color: white; font-weight: bold'
 
-# TAB 3: MARKET PULSE (Simplified)
+# --- 4. THE INTERFACE ---
+st.title("🌱 YNFINANCE | Market Intelligence")
+
+tab1, tab2, tab3 = st.tabs(["📊 Market Pulse", "🤖 AI Advisor", "📸 Vision Scan"])
+
 with tab1:
-    st.caption("Data provided by YFinance. Trade at your own risk.")
+    st.subheader("S&P 500 Signal Scanner")
+    pulse_df = get_sp500_data()
+    st.dataframe(
+        pulse_df.style.applymap(color_signals, subset=['Signal'])
+        .background_gradient(subset=['Change %'], cmap='RdYlGn'),
+        use_container_width=True, height=600, hide_index=True
+    )
+
+with tab2:
+    st.subheader("AI Trade Strategist")
+    ticker = st.text_input("Enter Ticker (e.g. AAPL):", value="NVDA").upper()
+    if st.button("Get AI Analysis"):
+        df_mini = yf.download(ticker, period="1mo")
+        context = df_mini.tail(10).to_string()
+        response = groq_client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{"role": "user", "content": f"Analyze this data for {ticker} and provide a trade plan: {context}"}]
+        )
+        st.write(response.choices[0].message.content)
+
+with tab3:
+    st.subheader("Vision Chart Analysis")
+    file = st.file_uploader("Upload Chart Screenshot", type=['png', 'jpg', 'jpeg'])
+    if file:
+        img = Image.open(file)
+        st.image(img, use_container_width=True)
+        if st.button("Run AI Vision Scan"):
+            res = vision_model.generate_content(["Identify support, resistance, and the current trend in this chart.", img])
+            st.success(res.text)
