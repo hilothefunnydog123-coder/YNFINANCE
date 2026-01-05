@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import yfinance as yf
 import pandas as pd
 import pandas_ta as ta
@@ -7,9 +8,22 @@ from groq import Groq
 from lightweight_charts_v5 import lightweight_charts_v5_component
 from PIL import Image
 import requests
-from datetime import datetime
 
-# --- 1. SEO & PAGE CONFIGURATION ---
+# --- 1. GOOGLE SEARCH CONSOLE VERIFICATION INJECTION ---
+# This injects the meta tag into the <head> so Google can verify your site.
+components.html(
+    """
+    <script>
+        var meta = document.createElement('meta');
+        meta.name = "google-site-verification";
+        meta.content = "HTd_e07Z3vt7rxoCVHyfti8A1mm9sWs_eRSETKtN-BY";
+        parent.document.getElementsByTagName('head')[0].appendChild(meta);
+    </script>
+    """,
+    height=0,
+)
+
+# --- 2. SEO & PAGE CONFIGURATION ---
 st.set_page_config(
     page_title="YNFINANCE | AI Stock Intelligence & Trade Signals",
     page_icon="🌱",
@@ -31,16 +45,17 @@ if "GEMINI_API_KEY" in st.secrets:
 else:
     st.warning("Missing GEMINI_API_KEY. Vision Analysis disabled.")
 
-# --- 2. DATA ENGINES ---
+# --- 3. DATA ENGINES ---
 @st.cache_data(ttl=900)
 def get_market_pulse():
     url = 'https://en.wikipedia.org/wiki/List_of_S%26P_500_companies'
     headers = {"User-Agent": "Mozilla/5.0"}
     resp = requests.get(url, headers=headers)
     tickers = pd.read_html(resp.text)[0]['Symbol'].str.replace('.', '-').tolist()
-    data = yf.download(tickers, period="2d", group_by='ticker', progress=False)
+    # Scans top 50 to save speed for the free tier
+    data = yf.download(tickers[:50], period="2d", group_by='ticker', progress=False)
     pulse = []
-    for t in tickers:
+    for t in tickers[:50]:
         try:
             c, p = data[t]['Close'].iloc[-1], data[t]['Close'].iloc[-2]
             ch = ((c - p) / p) * 100
@@ -54,29 +69,34 @@ def get_chart_data(symbol):
     df['EMA9'] = ta.ema(df['Close'], length=9)
     df['EMA21'] = ta.ema(df['Close'], length=21)
     df['Signal'] = 0
-    df.loc[(df['EMA9'] > df['EMA21']) & (df['EMA9'].shift(1) <= df['EMA21'].shift(1)), 'Signal'] = 1
+    # Positional Signal Generation
+    mask = (df['EMA9'] > df['EMA21']) & (df['EMA9'].shift(1) <= df['EMA21'].shift(1))
+    df.loc[mask, 'Signal'] = 1
     return df
 
-# --- 3. UI LAYOUT ---
+# --- 4. MAIN UI ---
 st.title("🌱 YNFINANCE")
-st.markdown("### AI-Powered Market Intelligence & Trade Signals")
+st.markdown("### Elite AI-Powered Market Intelligence & Trade Signals")
 
-tab1, tab2, tab3 = st.tabs(["📊 Market Pulse", "📈 Elite Charting", "📸 AI Vision"])
+tab1, tab2, tab3 = st.tabs(["📊 Market Pulse", "📈 Interactive Chart", "📸 AI Vision"])
 
 # TAB 1: MARKET SCANNER
 with tab1:
-    st.subheader("Daily S&P 500 Performance")
+    st.subheader("Daily Market Leaders (S&P 500)")
     pulse_df = get_market_pulse()
     st.dataframe(pulse_df.style.background_gradient(subset=["Change %"], cmap="RdYlGn"), 
-                 use_container_width=True, height=500, hide_index=True)
+                 use_container_width=True, height=450, hide_index=True)
 
-# TAB 2: ELITE CHARTING & SIGNALS
+# TAB 2: ELITE CHARTING & EMA CROSS SIGNALS
 with tab2:
-    ticker = st.text_input("Enter Ticker:", value="NVDA").upper()
+    col_input, col_info = st.columns([1, 2])
+    with col_input:
+        ticker = st.text_input("Symbol Lookup:", value="NVDA").upper()
+    
     df = get_chart_data(ticker)
     
     if df is not None:
-        # Prepare Chart Data
+        # Format for TradingView-style Lightweight Chart
         candles = [{"time": str(d.date()), "open": float(r['Open']), "high": float(r['High']), 
                     "low": float(r['Low']), "close": float(r['Close'])} for d, r in df.iterrows()]
         
@@ -88,35 +108,37 @@ with tab2:
 
         lightweight_charts_v5_component(
             charts=[{
-                "chart": {"layout": {"background": {"color": "#FFFFFF"}}},
+                "chart": {"layout": {"background": {"color": "#FFFFFF"}}, "grid": {"vertLines": {"visible": False}}},
                 "series": [
                     {"type": "Candlestick", "data": candles, "markers": markers},
-                    {"type": "Line", "data": [{"time": str(d.date()), "value": float(v)} for d, v in df['EMA9'].dropna().items()], "options": {"color": "#2196F3"}},
-                    {"type": "Line", "data": [{"time": str(d.date()), "value": float(v)} for d, v in df['EMA21'].dropna().items()], "options": {"color": "#FF9800"}}
+                    {"type": "Line", "data": [{"time": str(d.date()), "value": float(v)} for d, v in df['EMA9'].dropna().items()], "options": {"color": "#2196F3", "lineWidth": 1}},
+                    {"type": "Line", "data": [{"time": str(d.date()), "value": float(v)} for d, v in df['EMA21'].dropna().items()], "options": {"color": "#FF9800", "lineWidth": 1}}
                 ],
             }], height=500
         )
         
         if st.button("Generate AI Alpha Report"):
-            context = df.tail(10).to_string()
+            context = df.tail(15).to_string()
             chat = groq_client.chat.completions.create(
                 model="llama-3.3-70b-versatile",
-                messages=[{"role": "user", "content": f"Analyze these metrics for {ticker} and provide a trade plan: {context}"}]
+                messages=[{"role": "user", "content": f"Analyze these metrics for {ticker} and provide an Elite trade plan with stop loss: {context}"}]
             )
             st.info(chat.choices[0].message.content)
 
-# TAB 3: VISION ANALYZER
+# TAB 3: AI VISION ANALYZER (GEMINI 2.0)
 with tab3:
-    st.subheader("Technical Vision Analysis")
-    img_file = st.file_uploader("Upload Chart Screenshot", type=['png', 'jpg', 'jpeg'])
+    st.subheader("Chart Vision Pattern Analysis")
+    st.write("Upload any screenshot of a chart to identify support/resistance levels.")
+    img_file = st.file_uploader("Upload PNG/JPG", type=['png', 'jpg', 'jpeg'])
+    
     if img_file:
         img = Image.open(img_file)
-        st.image(img, width=700)
-        if st.button("Run Vision Analysis"):
-            with st.spinner("Gemini is reading the patterns..."):
-                prompt = "Identify trends, support/resistance, and provide a Buy/Sell signal based on this chart."
+        st.image(img, width=700, caption="Chart for Analysis")
+        if st.button("Run Vision Scan"):
+            with st.spinner("AI is reading market patterns..."):
+                prompt = "Act as a professional technical analyst. Identify the trend, key support/resistance levels, and suggest a trade entry if applicable."
                 response = vision_model.generate_content([prompt, img])
                 st.success(response.text)
 
 st.divider()
-st.caption("YNFINANCE Global Markets Data | Professional Grade Intelligence")
+st.caption("YNFINANCE Global Markets Data | Professional AI Intelligence")
