@@ -7,7 +7,18 @@ import google.generativeai as genai
 from groq import Groq
 from PIL import Image
 import requests
+import os
 
+# 1. Paste the EXACT filename Google gave you here
+GOOGLE_VERIFY_FILE = "google335b1359243f9e39.html" 
+
+# 2. Paste the EXACT content inside that file here (usually "google-site-verification: google12345...")
+GOOGLE_VERIFY_CONTENT = "google-site-verification: google335b1359243f9e39.html"
+
+# This logic handles the "download" request from Google's bot
+if st.query_params.get("verify") == "true":
+    st.write(GOOGLE_VERIFY_CONTENT)
+    st.stop()
 # --- 1. GOOGLE SEARCH CONSOLE TAG (UPDATED) ---
 components.html(
     f"""<script>
@@ -104,3 +115,4 @@ with tab3:
         if st.button("Run AI Vision Scan"):
             res = vision_model.generate_content(["Provide technical analysis for this chart.", img])
             st.success(res.text)
+
