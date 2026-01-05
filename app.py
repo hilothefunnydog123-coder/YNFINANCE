@@ -8,8 +8,7 @@ from groq import Groq
 from PIL import Image
 import requests
 
-# --- 1. GOOGLE SEARCH CONSOLE VERIFICATION ---
-# This remains hidden but lets Google index your "YN Finance" name.
+# --- 1. GOOGLE SEARCH CONSOLE TAG (HIDDEN) ---
 components.html(
     f"""<script>
         var meta = document.createElement('meta');
@@ -19,8 +18,8 @@ components.html(
     </script>""", height=0,
 )
 
-# --- 2. CONFIG & SECRETS ---
-st.set_page_config(page_title="YNFINANCE", page_icon="🌱", layout="wide")
+# --- 2. APP CONFIG ---
+st.set_page_config(page_title="YNFINANCE | Elite Scanner", page_icon="🌱", layout="wide")
 
 # API Setup
 groq_client = Groq(api_key=st.secrets["GROQ_API_KEY"]) if "GROQ_API_KEY" in st.secrets else None
@@ -28,81 +27,80 @@ if "GEMINI_API_KEY" in st.secrets:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
     vision_model = genai.GenerativeModel('gemini-2.0-flash')
 
-# --- 3. DATA ENGINE (S&P 500) ---
+# --- 3. DATA ENGINE ---
 @st.cache_data(ttl=3600)
-def get_sp500_scanner():
+def get_full_sp500_ranked():
     url = 'https://en.wikipedia.org/wiki/List_of_S%26P_500_companies'
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+    headers = {"User-Agent": "Mozilla/5.0"}
     
-    # Request with headers to avoid HTTP Error
+    # Get the tickers
     response = requests.get(url, headers=headers)
     tickers = pd.read_html(response.text)[0]['Symbol'].str.replace('.', '-').tolist()
     
-    # Download first 50 for the scanner view
-    data = yf.download(tickers[:50], period="3mo", group_by='ticker', progress=False)
+    # Download data for the whole list (this takes a few seconds)
+    data = yf.download(tickers, period="2d", group_by='ticker', progress=False)
     
-    scan_results = []
-    for t in tickers[:50]:
+    ranked_list = []
+    for t in tickers:
         try:
             df = data[t]
-            cp = df['Close'].iloc[-1]
-            pc = df['Close'].iloc[-2]
-            pct = ((cp - pc) / pc) * 100
+            current_price = df['Close'].iloc[-1]
+            prev_price = df['Close'].iloc[-2]
+            pct_change = ((current_price - prev_price) / prev_price) * 100
             
-            # Buy/Sell Logic (EMA 9/21 Cross)
-            e9 = ta.ema(df['Close'], length=9).iloc[-1]
-            e21 = ta.ema(df['Close'], length=21).iloc[-1]
+            # Simple Signal Logic (EMA Cross)
+            if pct_change > 2: sig = "STRONG BUY"
+            elif pct_change > 0: sig = "BUY"
+            elif pct_change < -2: sig = "STRONG SELL"
+            else: sig = "SELL"
             
-            if e9 > e21 * 1.02: sig = "STRONG BUY"
-            elif e9 > e21: sig = "BUY"
-            elif e9 < e21 * 0.98: sig = "STRONG SELL"
-            elif e9 < e21: sig = "SELL"
-            else: sig = "NEUTRAL"
-            
-            scan_results.append({"Ticker": t, "Price": round(cp, 2), "Change %": round(pct, 2), "Signal": sig})
+            ranked_list.append({
+                "Ticker": t, 
+                "Price": round(current_price, 2), 
+                "Change %": round(pct_change, 2), 
+                "Signal": sig
+            })
         except: continue
-    return pd.DataFrame(scan_results)
+        
+    # RANK BEST TO WORST
+    return pd.DataFrame(ranked_list).sort_values(by="Change %", ascending=False)
 
-def signal_style(s):
-    bg = '#00C805' if 'BUY' in s else '#FF3B30' if 'SELL' in s else '#8E8E93'
-    return f'background-color: {bg}; color: white; font-weight: bold; border-radius: 5px;'
+def signal_color(s):
+    color = '#00c805' if 'BUY' in s else '#ff3b30' if 'SELL' in s else '#8e8e93'
+    return f'background-color: {color}; color: white; font-weight: bold;'
 
-# --- 4. THE APP UI ---
+# --- 4. UI ---
 st.title("🌱 YNFINANCE")
-st.markdown("### Elite AI Market Scanner & Vision Analysis")
 
 tab1, tab2, tab3 = st.tabs(["📊 Market Pulse", "🤖 AI Advisor", "📸 Vision Scan"])
 
-# TAB 1: THE SCANNER
 with tab1:
-    st.subheader("S&P 500 Intelligence Feed")
-    with st.spinner("Scanning top 500 stocks..."):
-        pulse = get_sp500_scanner()
+    st.subheader("S&P 500 Performance: Ranked Best to Worst")
+    with st.spinner("Analyzing 500 stocks..."):
+        df_ranked = get_full_sp500_ranked()
         st.dataframe(
-            pulse.style.applymap(signal_style, subset=['Signal'])
+            df_ranked.style.applymap(signal_color, subset=['Signal'])
             .background_gradient(subset=['Change %'], cmap='RdYlGn'),
-            use_container_width=True, height=600, hide_index=True
+            use_container_width=True, height=800, hide_index=True
         )
 
-# TAB 2: THE CHATBOT
 with tab2:
     st.subheader("AI Trading Advisor")
-    tk = st.text_input("Analyze Symbol:", value="TSLA").upper()
-    if st.button("Generate Strategy"):
-        d = yf.download(tk, period="1mo")
-        response = groq_client.chat.completions.create(
+    ticker_input = st.text_input("Enter Ticker:", value="NVDA").upper()
+    if st.button("Get AI Analysis"):
+        hist = yf.download(ticker_input, period="1mo")
+        chat = groq_client.chat.completions.create(
             model="llama-3.3-70b-versatile",
-            messages=[{"role": "user", "content": f"Analyze {tk} with this data and provide a trade plan: {d.tail(10).to_string()}"}]
+            messages=[{"role": "user", "content": f"Analyze {ticker_input}: {hist.tail(10).to_string()}"}]
         )
-        st.write(response.choices[0].message.content)
+        st.write(chat.choices[0].message.content)
 
-# TAB 3: THE SCREENSHOT SCANNER
 with tab3:
     st.subheader("Vision Chart Analysis")
-    up = st.file_uploader("Drop Chart Image Here", type=['png', 'jpg', 'jpeg'])
-    if up:
-        img = Image.open(up)
+    uploaded_file = st.file_uploader("Upload Chart Screenshot", type=['png', 'jpg', 'jpeg'])
+    if uploaded_file:
+        img = Image.open(uploaded_file)
         st.image(img, use_container_width=True)
         if st.button("Run AI Vision Scan"):
-            res = vision_model.generate_content(["Break down this chart. Find support/resistance and trend.", img])
+            res = vision_model.generate_content(["Provide technical analysis for this chart.", img])
             st.success(res.text)
