@@ -18,50 +18,15 @@ components.html(
     </script>""", height=0,
 )
 
-# --- 2. DARK MODE UI STYLING (CSS) ---
+# --- 2. DARK MODE UI STYLING ---
 st.set_page_config(page_title="YNFINANCE | AI Terminal", page_icon="🌱", layout="wide")
 
 st.markdown("""
     <style>
-    /* Main Background */
-    .stApp {
-        background-color: #0E1117;
-        color: #FFFFFF;
-    }
-    /* Tabs Styling */
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 24px;
-        background-color: #161B22;
-        padding: 10px;
-        border-radius: 10px;
-    }
-    .stTabs [data-baseweb="tab"] {
-        height: 50px;
-        color: #8B949E;
-        font-weight: 600;
-    }
-    .stTabs [aria-selected="true"] {
-        color: #58A6FF !important;
-        border-bottom-color: #58A6FF !important;
-    }
-    /* Metric / Card Styling */
-    div[data-testid="stMetricValue"] {
-        font-size: 24px;
-        color: #58A6FF;
-    }
-    /* Global Buttons */
-    .stButton>button {
-        width: 100%;
-        border-radius: 8px;
-        background-color: #238636;
-        color: white;
-        border: none;
-        transition: 0.3s;
-    }
-    .stButton>button:hover {
-        background-color: #2ea043;
-        transform: translateY(-2px);
-    }
+    .stApp { background-color: #0E1117; color: #FFFFFF; }
+    .stTabs [data-baseweb="tab-list"] { gap: 24px; background-color: #161B22; padding: 10px; border-radius: 10px; }
+    .stButton>button { width: 100%; border-radius: 8px; background-color: #238636; color: white; border: none; }
+    .stButton>button:hover { background-color: #2ea043; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -84,3 +49,61 @@ def get_full_sp500_ranked():
     for t in tickers:
         try:
             df = data[t]
+            if df.empty: continue
+            cp = df['Close'].iloc[-1]
+            pc = df['Close'].iloc[-2]
+            pct = ((cp - pc) / pc) * 100
+            
+            if pct > 2.5: sig = "🟢 STRONG BUY"
+            elif pct > 0.5: sig = "📈 BUY"
+            elif pct < -2.5: sig = "🔴 STRONG SELL"
+            elif pct < -0.5: sig = "📉 SELL"
+            else: sig = "⚪ NEUTRAL"
+            
+            ranked_list.append({"Ticker": t, "Price": f"${cp:,.2f}", "Change %": round(pct, 2), "Signal": sig})
+        except:
+            continue # This fixes the SyntaxError you encountered
+            
+    return pd.DataFrame(ranked_list).sort_values(by="Change %", ascending=False)
+
+def signal_style(s):
+    if 'BUY' in s: bg = '#238636'
+    elif 'SELL' in s: bg = '#da3633'
+    else: bg = '#30363d'
+    return f'background-color: {bg}; color: white; font-weight: bold; border-radius: 4px;'
+
+# --- 4. UI ---
+st.title("🌱 YNFINANCE TERMINAL")
+
+tab1, tab2, tab3 = st.tabs(["⚡ Market Pulse", "🧠 AI Analyst", "👁️ Vision Scan"])
+
+with tab1:
+    st.subheader("S&P 500 Intelligence Ranking")
+    df_ranked = get_full_sp500_ranked()
+    st.dataframe(
+        df_ranked.style.map(signal_style, subset=['Signal'])
+        .background_gradient(subset=['Change %'], cmap='RdYlGn'),
+        use_container_width=True, height=800, hide_index=True
+    )
+
+with tab2:
+    st.subheader("AI Trade Strategist")
+    t_in = st.text_input("Ticker:", value="NVDA").upper()
+    if st.button("Generate Plan"):
+        h = yf.download(t_in, period="1mo")
+        c = groq_client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{"role": "user", "content": f"Analyze {t_in}: {h.tail(10).to_string()}"}]
+        )
+        st.info(c.choices[0].message.content)
+
+with tab3:
+    st.subheader("Vision Chart Intelligence")
+    file = st.file_uploader("Upload Image", type=['png', 'jpg', 'jpeg'])
+    if file:
+        img = Image.open(file)
+        st.image(img, use_container_width=True)
+        if st.button("Run Vision Scan"):
+            res = vision_model.generate_content(["Analyze this technical chart.", img])
+            st.success(res.text)
+
