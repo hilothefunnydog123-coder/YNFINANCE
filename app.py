@@ -106,4 +106,3 @@ with tab3:
         if st.button("Run Vision Scan"):
             res = vision_model.generate_content(["Analyze this technical chart.", img])
             st.success(res.text)
-
