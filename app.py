@@ -8,7 +8,7 @@ import requests
 # This "tricks" Streamlit into putting your ID in the <head>
 components.html(
     f"""
-    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-0000000000000000" crossorigin="anonymous"></script>
+    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-7892378866702980" crossorigin="anonymous"></script>
     <script>
         var meta = document.createElement('meta');
         meta.name = "google-site-verification";
@@ -93,3 +93,4 @@ elif page == "CONTACT":
 # --- 5. FOOTER ---
 st.sidebar.markdown("---")
 st.sidebar.caption("YNFINANCE // GLOBAL DATA // 2026")
+
