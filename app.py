@@ -63,7 +63,7 @@ st.markdown("""
         transform: translateY(-2px);
     }
     </style>
-    """, unsafe_allow_name=True)
+    """, unsafe_allow_html=True)
 
 # API Setup
 groq_client = Groq(api_key=st.secrets["GROQ_API_KEY"]) if "GROQ_API_KEY" in st.secrets else None
@@ -84,69 +84,3 @@ def get_full_sp500_ranked():
     for t in tickers:
         try:
             df = data[t]
-            cp = df['Close'].iloc[-1]
-            pc = df['Close'].iloc[-2]
-            pct = ((cp - pc) / pc) * 100
-            
-            if pct > 2.5: sig = "🟢 STRONG BUY"
-            elif pct > 0.5: sig = "📈 BUY"
-            elif pct < -2.5: sig = "🔴 STRONG SELL"
-            elif pct < -0.5: sig = "📉 SELL"
-            else: sig = "⚪ NEUTRAL"
-            
-            ranked_list.append({"Ticker": t, "Price": f"${cp:,.2f}", "Change %": round(pct, 2), "Signal": sig})
-        except: continue
-    return pd.DataFrame(ranked_list).sort_values(by="Change %", ascending=False)
-
-def signal_style(s):
-    if 'BUY' in s: bg = '#238636'; text = 'white'
-    elif 'SELL' in s: bg = '#da3633'; text = 'white'
-    else: bg = '#30363d'; text = '#8b949e'
-    return f'background-color: {bg}; color: {text}; font-weight: bold; border-radius: 4px; padding: 5px;'
-
-# --- 4. APP INTERFACE ---
-st.title("🌱 YNFINANCE TERMINAL")
-st.write("Professional-Grade AI Stock Intelligence")
-
-tab1, tab2, tab3 = st.tabs(["⚡ Market Pulse", "🧠 AI Analyst", "👁️ Vision Scan"])
-
-with tab1:
-    st.subheader("S&P 500 Intelligence Ranking")
-    with st.spinner("Crunching Market Data..."):
-        df_ranked = get_full_sp500_ranked()
-        st.dataframe(
-            df_ranked.style.map(signal_style, subset=['Signal'])
-            .background_gradient(subset=['Change %'], cmap='RdYlGn'),
-            use_container_width=True, height=800, hide_index=True
-        )
-
-with tab2:
-    st.subheader("AI Trade Strategist")
-    col1, col2 = st.columns([1, 2])
-    with col1:
-        ticker_input = st.text_input("Enter Ticker:", value="NVDA").upper()
-        analyze_btn = st.button("Generate Alpha Plan")
-    with col2:
-        if analyze_btn:
-            hist = yf.download(ticker_input, period="1mo")
-            chat = groq_client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
-                messages=[{"role": "user", "content": f"Analyze {ticker_input}: {hist.tail(10).to_string()}"}]
-            )
-            st.markdown(f"### Trade Setup for {ticker_input}")
-            st.info(chat.choices[0].message.content)
-
-with tab3:
-    st.subheader("Vision Chart Intelligence")
-    st.write("Upload a chart screenshot for pattern recognition.")
-    uploaded_file = st.file_uploader("Upload Image", type=['png', 'jpg', 'jpeg'])
-    if uploaded_file:
-        img = Image.open(uploaded_file)
-        st.image(img, use_container_width=True, caption="Chart for Vision Analysis")
-        if st.button("Run Vision Scan"):
-            with st.spinner("AI analyzing patterns..."):
-                res = vision_model.generate_content(["Provide a professional technical analysis for this chart image.", img])
-                st.success(res.text)
-
-st.markdown("---")
-st.caption("YNFINANCE | Data provided by Yahoo Finance | AI Intelligence by Groq & Gemini")
